@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+	  <TargetFramework>net9.0</TargetFramework>
+	</PropertyGroup>
+
+	<ItemGroup>
+    <PackageReference Include="LibUsbDotNet" Version="2.2.29" />
+    <PackageReference Include="Magick.NET.Core" Version="14.5.0" />
+    <PackageReference Include="System.Console" Version="4.3.1" />
+  </ItemGroup>
+
+</Project>
