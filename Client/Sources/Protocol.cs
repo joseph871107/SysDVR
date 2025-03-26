@@ -12,7 +12,7 @@ using System.Threading.Tasks;
 namespace SysDVR.Client.Sources
 {
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    struct PacketHeader
+    public struct PacketHeader
     {
         // Note: to make the TCP implementation easier these should be composed of 4 identical bytes
         public const uint MagicResponse = 0xCCCCCCCC;
@@ -73,7 +73,7 @@ namespace SysDVR.Client.Sources
     }
 
     [StructLayout(LayoutKind.Sequential)]
-    unsafe struct ProtoHandshakeRequest
+    public unsafe struct ProtoHandshakeRequest
     {
         public static bool IsProtocolSupported(string protoString) =>
             protoString is "03" or "02";
@@ -203,7 +203,7 @@ namespace SysDVR.Client.Sources
         }
     }
 
-    struct ReceivedPacket
+    public struct ReceivedPacket
     {
         public PacketHeader Header;
         public PoolBuffer? Buffer;
@@ -244,7 +244,7 @@ namespace SysDVR.Client.Sources
         }
     }
 
-    abstract class StreamingSource : IDisposable
+    public abstract class StreamingSource : IDisposable
     {
         // This is a single object shared between the streaming target and the source(s)
         // The sources should respect the NoVideo/Audio state of the options object and not change it

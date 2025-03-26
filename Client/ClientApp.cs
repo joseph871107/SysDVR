@@ -2,6 +2,7 @@
 
 using ImGuiNET;
 using SDL2;
+using static SDL2.SDL;
 using SysDVR.Client.Core;
 using SysDVR.Client.GUI;
 using SysDVR.Client.GUI.Components;
@@ -12,6 +13,12 @@ using System.Diagnostics;
 using System.Numerics;
 using System.Runtime.InteropServices;
 using System.Threading;
+
+public class InputEvent
+{
+    public GuiMessage msg { get; set; }
+    public SDL_Event evt { get; set; }
+}
 
 public class ClientApp
 {
@@ -48,7 +55,7 @@ public class ClientApp
 
     // View state management
     Stack<View> Views = new();
-    View? CurrentView = null;
+    public View? CurrentView = null;
     ImGuiStyle DefaultStyle;
     bool PendingViewChanges;
     FramerateCap Cap = new();
@@ -334,22 +341,25 @@ public class ClientApp
             {
                 Cap.OnEvent(true);
 
-                if (msg == GuiMessage.Resize)
-                    UpdateSize();
-                else if (msg == GuiMessage.BackButton)
-                {
-                    CurrentView.BackPressed();
-                    // Don't pass this event to the imgui backend so it will not lose focus when we return to the previous page
-                    continue;
+                switch (msg) {
+                    case GuiMessage.Resize:
+                        UpdateSize();
+                        break;
+                    case GuiMessage.BackButton:
+                        CurrentView.BackPressed();
+                        continue;
+                    case GuiMessage.KeyDown:
+                    case GuiMessage.KeyUp:
+                        if (msg == GuiMessage.KeyDown && evt.key.keysym.scancode is SDL.SDL_Scancode.SDL_SCANCODE_LSHIFT or SDL.SDL_Scancode.SDL_SCANCODE_RSHIFT)
+                            ShiftDown = true;
+                        else if (msg == GuiMessage.KeyUp && evt.key.keysym.scancode is SDL.SDL_Scancode.SDL_SCANCODE_LSHIFT or SDL.SDL_Scancode.SDL_SCANCODE_RSHIFT)
+                            ShiftDown = false;
+                        else
+                            CurrentView.OnKeyPressed(evt.key.keysym);
+                        break;
+                    case GuiMessage.Quit:
+                        goto break_main_loop;
                 }
-                else if (msg == GuiMessage.KeyDown && evt.key.keysym.scancode is SDL.SDL_Scancode.SDL_SCANCODE_LSHIFT or SDL.SDL_Scancode.SDL_SCANCODE_RSHIFT)
-                    ShiftDown = true;
-                else if (msg == GuiMessage.KeyUp && evt.key.keysym.scancode is SDL.SDL_Scancode.SDL_SCANCODE_LSHIFT or SDL.SDL_Scancode.SDL_SCANCODE_RSHIFT)
-                    ShiftDown = false;
-                else if (msg == GuiMessage.KeyUp)
-                    CurrentView.OnKeyPressed(evt.key.keysym);
-                else if (msg == GuiMessage.Quit)
-                    goto break_main_loop;
 
 				ImGuiSDL2Impl.ProcessEvent(in evt);
 

@@ -48,7 +48,7 @@ namespace SysDVR.Client.Core
 		}
 	}
 
-	class PoolBuffer
+	public class PoolBuffer
 	{
 		readonly static ArrayPool<byte> bufferPool = ArrayPool<byte>.Shared;
 		readonly static ConcurrentBag<PoolBuffer> instancePool = new();
@@ -138,7 +138,7 @@ namespace SysDVR.Client.Core
 			new ArraySegment<byte>(GetRawArray(), 0, Length);
 	}
 
-	abstract class OutStream : IDisposable
+	public abstract class OutStream : IDisposable
 	{
 		protected OutStream? Next;
 		protected CancellationToken Cancel;
@@ -213,7 +213,7 @@ namespace SysDVR.Client.Core
 		}
 	}
 
-	class StreamManager : IDisposable
+	public class StreamManager : IDisposable
 	{
 		private bool disposedValue;
 

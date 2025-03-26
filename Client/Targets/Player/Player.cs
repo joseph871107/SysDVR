@@ -17,7 +17,7 @@ using SysDVR.Client.Sources;
 
 namespace SysDVR.Client.Targets.Player
 {
-    unsafe class DecoderContext
+    public unsafe class DecoderContext
     {
         public AVCodecContext* CodecCtx { get; init; }
 
@@ -40,7 +40,7 @@ namespace SysDVR.Client.Targets.Player
     }
 
     // Guarantees that the audio and video stream are compatible with the player
-    class PlayerManager : StreamManager
+    public class PlayerManager : StreamManager
     {
         internal new H264StreamTarget VideoTarget;
         internal new AudioOutStream AudioTarget;
@@ -161,11 +161,12 @@ namespace SysDVR.Client.Targets.Player
         }
     }
 
-    class VideoPlayer : IDisposable
+    public class VideoPlayer : IDisposable
     {
         public const AVPixelFormat TargetDecodingFormat = AVPixelFormat.AV_PIX_FMT_YUV420P;
         public readonly uint TargetTextureFormat = SDL_PIXELFORMAT_IYUV;
 
+        public DateTime VideoLastUpdate = DateTime.Now;
         public DecoderContext Decoder { get; private set; }
         FormatConverterContext Converter; // Initialized only when the decoder output format doesn't match the SDL texture format
 
@@ -315,6 +316,7 @@ namespace SysDVR.Client.Targets.Player
                     (IntPtr)pic->data[0], pic->linesize[0],
                     (IntPtr)pic->data[1], pic->linesize[1],
                     (IntPtr)pic->data[2], pic->linesize[2]);
+                VideoLastUpdate = DateTime.Now;
             }
 #if DEBUG
             // Not sure if this is needed but ffplay source does handle this case, all my tests had positive linesize
@@ -325,12 +327,14 @@ namespace SysDVR.Client.Targets.Player
                     (IntPtr)(pic->data[0] + pic->linesize[0] * (pic->height - 1)), -pic->linesize[0],
                     (IntPtr)(pic->data[1] + pic->linesize[1] * (av_ceil_rshift(pic->height, 1) - 1)), -pic->linesize[1],
                     (IntPtr)(pic->data[2] + pic->linesize[2] * (av_ceil_rshift(pic->height, 1) - 1)), -pic->linesize[2]);
+                VideoLastUpdate = DateTime.Now;
             }
 #endif
             // While this doesn't seem to be handled in ffplay but the texture can be non-planar with some decoders
             else if (pic->linesize[0] > 0 && pic->linesize[1] == 0)
             {
                 SDL_UpdateTexture(TargetTexture, ref TargetTextureSize, (nint)pic->data[0], pic->linesize[0]);
+                VideoLastUpdate = DateTime.Now;
             }
             else Console.WriteLine($"Error: Non-positive planar linesizes are not supported, open an issue on Github. {pic->linesize[0]} {pic->linesize[1]} {pic->linesize[2]}");
         }

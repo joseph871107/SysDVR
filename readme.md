@@ -42,3 +42,47 @@ If you like my work and wish to support me you can donate on [ko-fi](https://ko-
 - [RTSPSharp](https://github.com/ngraziano/SharpRTSP) for the C# RTSP library
 - Bonta on discord for a lot of help implementing a custom RTSP server
 - [Xerpi](https://github.com/xerpi) for a lot of help while working on the UVC branch
+
+
+## Forked Features
+After all, this is a forked version of SysDVR from exelix11.
+It mainly implemented simple keyboard/controller events and send those from SDL2 to switch using [sys-botbase](https://github.com/olliz0r/sys-botbase) and its [client codebase](https://github.com/kwsch/SysBot.NET).
+
+It also featured with **fallback stream** (~1 FPS) using [Pixel peeking command](https://github.com/olliz0r/sys-botbase/blob/master/commands.md#screen-control) from sys-botbase. In other words, if you accidentally press something that Home key and exit the game. It will automatically fallback to low FPS stream. And you can hop back to the game.
+
+### Key mappings
+To maintain original key functionalities like screenshot, I avoid using WASD keys.
+
+Since I only using **keyboard for testing**, it might changed significantly in the future or have a binding changing menu or not. So not recommended.
+- Keyboard:
+  - Arrow keys: Left joycon arrow keys
+  - Number 1: Y
+  - Number 2: X
+  - Number 3: B
+  - Number 4: A
+  - Number 5: Left Stick
+  - Number 6: Right Stick
+  - X: L
+  - C: R
+  - Z: ZL
+  - Y: ZR
+  - -: Minus
+  - +: Plus
+  - Home/H: Home
+  - End/J: Capture
+
+  - Additional keyboard hotkeys:
+    - K: Try fixing controller if not able to control the switch
+    - L: Manually capture current screen no matter in game or not
+
+
+
+- Controller: All keys mapped but only tested with my `IINE Switch Pro Controller` like [this one](https://www.amazon.com/Wireless-Controller-Nintendo-Switch-Support-Control/dp/B0888DJGGD)
+  - No Gyro/Rumble, only events supported by [SDL2-CS](https://github.com/ppy/SDL2-CS)
+
+## Tested and working
+- Windows
+
+### Known issues and limitations
+- Android will ran into performance issues and crash.
+- Joystick update rate is set to ~0.2 seconds, because high update rate will jamming the socket channel in sys-botbase and all other buttons start to **lag bad**.

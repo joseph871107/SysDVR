@@ -34,6 +34,7 @@ namespace SysDVR.Client.GUI.Components
 
         public bool IsFullscreen { get; private set; } = false;
         public Vector2 WindowSize { get; private set; }
+		public InputProvider? Input;
 
         internal bool AcceptControllerInput = true;
         internal bool DebugPrintSdlEvents = false;
@@ -67,7 +68,7 @@ namespace SysDVR.Client.GUI.Components
         {
             Program.DebugLog("Initializing SDL");
 
-            SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_JOYSTICK).AssertZero(SDL_GetError);
+            SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_GAMECONTROLLER).AssertZero(SDL_GetError);
 
             var flags = SDL_image.IMG_InitFlags.IMG_INIT_JPG | SDL_image.IMG_InitFlags.IMG_INIT_PNG;
             SDL_image.IMG_Init(flags).AssertEqual((int)flags, SDL_image.IMG_GetError);
@@ -148,68 +149,68 @@ namespace SysDVR.Client.GUI.Components
             if (SDL_PollEvent(out evt) == 0)
                 return GuiMessage.None;
 
-            if (evt.type == SDL_EventType.SDL_JOYBUTTONDOWN && !AcceptControllerInput)
-                return GuiMessage.None;
+            if (AcceptControllerInput && Input?.HandleEvent(evt) == true)
+                return GuiMessage.Other;
 
             if (DebugPrintSdlEvents)
                 Console.WriteLine(DebugSdlEvent(evt));
-
+            
+            // Refactor to switch case to reduce key processing speed
+            switch (evt.type) {
+                case SDL_EventType.SDL_MOUSEBUTTONDOWN:
+                case SDL_EventType.SDL_MOUSEBUTTONUP:
 #if ANDROID_LIB
-            // Fix for Samsung Dex software touchpad inputs
-            if (evt.type is SDL_EventType.SDL_MOUSEBUTTONDOWN or SDL_EventType.SDL_MOUSEBUTTONUP)
-            {
-                if (evt.button.button == 0)
-                    evt.button.button = 1;
-            }
+                    // Fix for Samsung Dex software touchpad inputs
+                    if (evt.button.button == 0)
+                        evt.button.button = 1;
 #endif
-            // Fix for some android TV boxes that use select instead of enter
-            if (evt.type is SDL_EventType.SDL_KEYDOWN or SDL_EventType.SDL_KEYUP)
-            {
-                if (evt.key.keysym.sym == SDL_Keycode.SDLK_SELECT)
-                {
-                    evt.key.keysym.sym = SDL_Keycode.SDLK_RETURN;
-                    evt.key.keysym.scancode = SDL_Scancode.SDL_SCANCODE_RETURN;
-                }
-            }
+                    break;
+                case SDL_EventType.SDL_KEYDOWN:
+                    switch (evt.key.keysym.sym) {
+                        case SDL_Keycode.SDLK_SELECT:
+                            // Fix for some android TV boxes that use select instead of enter
+                            evt.key.keysym.sym = SDL_Keycode.SDLK_RETURN;
+                            evt.key.keysym.scancode = SDL_Scancode.SDL_SCANCODE_RETURN;
+                            break;
+                        case SDL_Keycode.SDLK_F11:
+                            SetFullScreen(!IsFullscreen);
+                            return GuiMessage.FullScreen;
+                        case SDL_Keycode.SDLK_ESCAPE:
+                        case SDL_Keycode.SDLK_AC_BACK:
+                            return GuiMessage.BackButton;
+                    }
+                    return GuiMessage.KeyDown;
+                case SDL_EventType.SDL_KEYUP:
+                    // Fix for some android TV boxes that use select instead of enter
+                    if (evt.key.keysym.sym == SDL_Keycode.SDLK_SELECT)
+                    {
+                        evt.key.keysym.sym = SDL_Keycode.SDLK_RETURN;
+                        evt.key.keysym.scancode = SDL_Scancode.SDL_SCANCODE_RETURN;
+                    }
 
-            if (evt.type == SDL_EventType.SDL_QUIT ||
-                    (evt.type == SDL_EventType.SDL_WINDOWEVENT && evt.window.windowEvent == SDL_WindowEventID.SDL_WINDOWEVENT_CLOSE))
-            {
-                return GuiMessage.Quit;
-            }
-            else if (evt.type == SDL_EventType.SDL_WINDOWEVENT && evt.window.windowEvent == SDL_WindowEventID.SDL_WINDOWEVENT_RESIZED)
-            {
-                return UpdateSize() ? GuiMessage.Resize : GuiMessage.Other;
-            }
-            else if (evt.type == SDL_EventType.SDL_KEYDOWN && evt.key.keysym.sym == SDL_Keycode.SDLK_F11)
-            {
-                SetFullScreen(!IsFullscreen);
-                return GuiMessage.FullScreen;
-            }
-            else if (evt.type == SDL_EventType.SDL_KEYDOWN && evt.key.keysym.sym is SDL_Keycode.SDLK_ESCAPE or SDL_Keycode.SDLK_AC_BACK)
-            {
-                return GuiMessage.BackButton;
-            }
-            else if (evt.type == SDL_EventType.SDL_KEYDOWN)
-            {
-                return GuiMessage.KeyDown;
-            }
-            else if (evt.type == SDL_EventType.SDL_KEYUP)
-            {
-                // At least on Windows keeping a key pressed spams of keydown and textinput events due to the text input behavior
-                // This also affects imgui IO keydown events.
-                // The only event that is guaranteed to fire is the keyup event so we use it to determine when a key has been pressed and then released
-                return GuiMessage.KeyUp;
-            }
-            else if (evt.type == SDL_EventType.SDL_RENDER_DEVICE_RESET)
-            {
-                // This should not happen on modern android versions according to SDL docs
-                Console.WriteLine("SDL failed to resume, terminating.");
-                return GuiMessage.Quit;
-            }
-            else if (evt.type == SDL_EventType.SDL_JOYBUTTONDOWN && evt.jbutton.button == 1) // SDL_CONTROLLER_BUTTON_B
-            {
-                return GuiMessage.BackButton;
+                    // At least on Windows keeping a key pressed spams of keydown and textinput events due to the text input behavior
+                    // This also affects imgui IO keydown events.
+                    // The only event that is guaranteed to fire is the keyup event so we use it to determine when a key has been pressed and then released
+                    return GuiMessage.KeyUp;
+                case SDL_EventType.SDL_QUIT:
+                    return GuiMessage.Quit;
+                case SDL_EventType.SDL_WINDOWEVENT:
+                    switch (evt.window.windowEvent) {
+                        case SDL_WindowEventID.SDL_WINDOWEVENT_CLOSE:
+                            return GuiMessage.Quit;
+                        case SDL_WindowEventID.SDL_WINDOWEVENT_RESIZED:
+                            return UpdateSize() ? GuiMessage.Resize : GuiMessage.Other;
+                    }
+                    break;
+                case SDL_EventType.SDL_RENDER_DEVICE_RESET:
+                    // This should not happen on modern android versions according to SDL docs
+                    Console.WriteLine("SDL failed to resume, terminating.");
+                    return GuiMessage.Quit;
+                case SDL_EventType.SDL_JOYBUTTONDOWN:
+                    if (evt.jbutton.button == 1) // SDL_CONTROLLER_BUTTON_B
+                        return GuiMessage.BackButton;
+                    break;
+
             }
 
             return GuiMessage.Other;

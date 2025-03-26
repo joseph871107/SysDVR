@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Numerics;
@@ -16,6 +16,7 @@ using System.Text;
 using System.Text.Json.Serialization;
 using System.IO;
 using System.ComponentModel;
+using SysBot.Base;
 
 namespace SysDVR.Client.GUI
 {
@@ -39,15 +40,15 @@ namespace SysDVR.Client.GUI
         }
     }
 
-    internal class PlayerCore
+    public class PlayerCore
     {
         internal readonly AudioPlayer? Audio;
-        internal readonly VideoPlayer? Video;
+        public readonly VideoPlayer? Video;
         internal readonly PlayerManager Manager;
 
         readonly FramerateCounter fps = new();
 
-        SDL_Rect DisplayRect = new SDL_Rect();
+        public SDL_Rect DisplayRect = new SDL_Rect();
 
         public PlayerCore(PlayerManager manager)
         {
@@ -233,7 +234,7 @@ namespace SysDVR.Client.GUI
         readonly bool HasAudio;
         readonly bool HasVideo;
 
-        readonly PlayerCore player;
+        public readonly PlayerCore player;
 
         bool OverlayAlwaysShowing = false;
 
@@ -498,6 +499,53 @@ namespace SysDVR.Client.GUI
 
                 if (ImGui.Button(Strings.EnterFullScreen)) ButtonFullscreen();
                 uiOptCenter.EndHere();
+
+                if (Program.Options.Debug.Log) {
+                    var Input = Program.SdlCtx.Input;
+                    
+                    ImGui.NewLine();
+                    uiOptCenter.StartHere();
+
+                    if (ImGui.Button("Fix Controller")) {
+                        Input.ResetController();
+                        Input.PixelPeekBackground();
+                    }
+                    ImGui.SameLine();
+                    if (ImGui.Button("Home")) Input.Click(SwitchButton.HOME);
+                    ImGui.SameLine();
+                    if (ImGui.Button("-")) Input.Click(SwitchButton.MINUS);
+                    ImGui.SameLine();
+                    if (ImGui.Button("+")) Input.Click(SwitchButton.PLUS);
+                    ImGui.SameLine();
+                    if (ImGui.Button("Screen On/Off")) Input.ToggleScreen();
+                    uiOptCenter.EndHere();
+
+                    ImGui.NewLine();
+
+                    var bSpacing = spacing * 3;
+                    
+                    ImGui.SameLine(0, bSpacing);
+                    if (ImGui.Button("Up")) Input.Click(SwitchButton.DUP);
+                    ImGui.SameLine(0, bSpacing  + spacing * 1.5f);
+                    if (ImGui.Button("X")) Input.Click(SwitchButton.X);
+                    ImGui.NewLine();
+
+                    ImGui.SameLine();
+                    if (ImGui.Button("Left")) Input.Click(SwitchButton.DLEFT);
+                    ImGui.SameLine(0, bSpacing);
+                    if (ImGui.Button("Right")) Input.Click(SwitchButton.DRIGHT);
+                    ImGui.SameLine();
+                    if (ImGui.Button("Y")) Input.Click(SwitchButton.Y);
+                    ImGui.SameLine(0, spacing);
+                    if (ImGui.Button("A")) Input.Click(SwitchButton.A);
+                    ImGui.NewLine();
+
+                    ImGui.SameLine(0, bSpacing * 0.8f);
+                    if (ImGui.Button("Down")) Input.Click(SwitchButton.DDOWN);
+                    ImGui.SameLine(0, bSpacing * 0.8f + spacing * 1.5f);
+                    if (ImGui.Button("B")) Input.Click(SwitchButton.B);
+                    ImGui.NewLine();
+                }
 
                 ImGui.NewLine();
                 var w = ImGui.GetWindowSize().X;

@@ -27,6 +27,8 @@ namespace SysDVR.Client.Sources
 
 		readonly TcpBridgeSubStream? videoStream;
 		readonly TcpBridgeSubStream? audioStream;
+		readonly SysBotbase? bot;
+		CancellationToken cancel;
 
 		readonly Channel<ReceivedPacket> poolBuffers = Channel.CreateBounded<ReceivedPacket>(
 			new BoundedChannelOptions(30)
@@ -40,11 +42,15 @@ namespace SysDVR.Client.Sources
 
 		public TCPBridgeSource(DeviceInfo device, CancellationToken tok, StreamingOptions opt) : base(opt, tok)
 		{
+			cancel = tok;
 			if (Options.HasVideo)
 				videoStream = new(device.ConnectionString, StreamKind.Video, tok, OnBuffer, ReportMessage);
 
 			if (Options.HasAudio)
 				audioStream = new(device.ConnectionString, StreamKind.Audio, tok, OnBuffer, ReportMessage);
+			
+			bot = new(device.ConnectionString, tok, ReportMessage);
+			Program.SdlCtx.Input = new(ref bot);
 		}
 
 		async void OnBuffer(ReceivedPacket buffer)
@@ -77,10 +83,7 @@ namespace SysDVR.Client.Sources
 			}
 		}
 
-		public override async Task Connect()
-		{
-			List<Task> tasks = new();
-
+		async Task ConnectInternal() {
 			await WaitAll(videoStream?.Connect(), audioStream?.Connect()).ConfigureAwait(false);
 
 			await WaitAll(
@@ -93,6 +96,24 @@ namespace SysDVR.Client.Sources
 
 			if (audioStream is not null)
 				audioStream.PendingLoop = audioStream.ProcessLoop().ContinueWith(x => LoopFinished(audioStream, x));
+		}
+
+		public override async Task Connect()
+		{
+			// Try connecting SysBotbase first if not in the game which SysDVR can not be connected.
+			await bot.Connect().ConfigureAwait(false);
+			if (bot.Connected)
+				new Thread(async () => {
+					while (
+						!cancel.IsCancellationRequested &&
+						bot.Socket.Connected &&
+						!(videoStream?.IsConnected == true))
+						try {
+							await ConnectInternal();
+						} catch {}
+				}).Start();
+			else
+				await ConnectInternal();
 		}
 
 		async void LoopFinished(TcpBridgeSubStream stream, Task task)
@@ -183,6 +204,8 @@ namespace SysDVR.Client.Sources
 		{
 			videoStream?.Dispose();
 			audioStream?.Dispose();
+			bot?.Dispose();
+			Program.SdlCtx.Input?.Dispose();
 
 			poolBuffers.Writer.Complete();
 

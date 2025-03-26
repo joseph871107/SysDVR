@@ -8,7 +8,7 @@ using System.Threading.Tasks;
 
 namespace SysDVR.Client.Targets.Player
 {
-    class StreamSynchronizationHelper
+    public class StreamSynchronizationHelper
     {
         readonly bool Enabled;
 
