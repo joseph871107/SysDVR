@@ -4,19 +4,7 @@ name: SysDVR-Client dotnet build
 # All the other builds are platform specific and produce a native AOT build with all the dependencies included
 
 on:
-  push:
-    branches: [ master ]
-    paths:
-      - Client/**
-      # but not the multiplatform builds
-      - '!Client/Platform/Android/**'
-      - '!Client/Platform/Linux/**'
-  pull_request:
-    branches: [ master ]
-    paths:
-      - Client/**
-      - '!Client/Platform/Android/**'
-      - '!Client/Platform/Linux/**'
+  workflow_dispatch:
 
 jobs:
   build:

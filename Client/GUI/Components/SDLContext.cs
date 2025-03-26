@@ -155,7 +155,7 @@ namespace SysDVR.Client.GUI.Components
             if (DebugPrintSdlEvents)
                 Console.WriteLine(DebugSdlEvent(evt));
             
-            // Refactor to switch case to reduce key processing speed
+            // Refactor to switch case to reduce key event lags
             switch (evt.type) {
                 case SDL_EventType.SDL_MOUSEBUTTONDOWN:
                 case SDL_EventType.SDL_MOUSEBUTTONUP:

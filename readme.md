@@ -48,7 +48,7 @@ If you like my work and wish to support me you can donate on [ko-fi](https://ko-
 After all, this is a forked version of SysDVR from exelix11.
 It mainly implemented simple keyboard/controller events and send those from SDL2 to switch using [sys-botbase](https://github.com/olliz0r/sys-botbase) and its [client codebase](https://github.com/kwsch/SysBot.NET).
 
-It also featured with **fallback stream** (~1 FPS) using [Pixel peeking command](https://github.com/olliz0r/sys-botbase/blob/master/commands.md#screen-control) from sys-botbase. In other words, if you accidentally press something that Home key and exit the game. It will automatically fallback to low FPS stream. And you can hop back to the game.
+It also featured with **fallback stream** (~1 FPS) using [Pixel peeking command](https://github.com/olliz0r/sys-botbase/blob/master/commands.md#screen-control) from sys-botbase. In other words, if you accidentally press something like Home key and exit the game. It will automatically fallback to low FPS stream. And you can hop back to the game.
 
 ### Key mappings
 To maintain original key functionalities like screenshot, I avoid using WASD keys.
