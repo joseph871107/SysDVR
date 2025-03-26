@@ -14,6 +14,7 @@ using SysDVR.Client.GUI;
 using ImGuiNET;
 using SDL2;
 using SysDVR.Client.Sources;
+using System.Collections.Concurrent;
 
 namespace SysDVR.Client.Targets.Player
 {
@@ -161,6 +162,15 @@ namespace SysDVR.Client.Targets.Player
         }
     }
 
+    public class YUVTextureContext
+    {
+        public nint yPlane;
+        public int yPitch;
+        public nint uPlane;
+        public nint vPlane;
+        public int uvPitch;
+    }
+
     public class VideoPlayer : IDisposable
     {
         public const AVPixelFormat TargetDecodingFormat = AVPixelFormat.AV_PIX_FMT_YUV420P;
@@ -176,6 +186,7 @@ namespace SysDVR.Client.Targets.Player
         public object TextureLock;
         public IntPtr TargetTexture;
         public SDL_Rect TargetTextureSize;
+        public ConcurrentQueue<YUVTextureContext> yuvs = new();
 
         public VideoPlayer(string? preferredDecoderName, bool hwAccel)
         {
@@ -299,8 +310,9 @@ namespace SysDVR.Client.Targets.Player
                 UpdateSDLTexture(Decoder.RenderFrame);
 
                 return true;
-            }
-            return false;
+            } else
+                // Update in main loop
+                return UpdateSDLTextureFromYUV();
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -337,6 +349,22 @@ namespace SysDVR.Client.Targets.Player
                 VideoLastUpdate = DateTime.Now;
             }
             else Console.WriteLine($"Error: Non-positive planar linesizes are not supported, open an issue on Github. {pic->linesize[0]} {pic->linesize[1]} {pic->linesize[2]}");
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public unsafe bool UpdateSDLTextureFromYUV() {
+            bool updated = false;
+            YUVTextureContext lastYuv;
+            YUVTextureContext yuv = new();
+            lock (yuvs) {
+                while (yuvs.TryDequeue(out lastYuv)) {
+                    updated = true;
+                    yuv = lastYuv;
+                }
+                if (updated)
+                    SDL_UpdateYUVTexture(TargetTexture, ref TargetTextureSize, yuv.yPlane, yuv.yPitch, yuv.uPlane, yuv.uvPitch, yuv.vPlane, yuv.uvPitch);
+            }
+            return updated;
         }
 
         bool converterFirstFrameCheck = false;

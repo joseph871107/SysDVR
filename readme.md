@@ -46,11 +46,19 @@ If you like my work and wish to support me you can donate on [ko-fi](https://ko-
 
 ## Forked Features
 After all, this is a forked version of SysDVR from exelix11.
-It mainly implemented simple keyboard/controller events and send those from SDL2 to switch using [sys-botbase](https://github.com/olliz0r/sys-botbase) and its [client codebase](https://github.com/kwsch/SysBot.NET).
 
-It also featured with **fallback stream** (~1 FPS) using [Pixel peeking command](https://github.com/olliz0r/sys-botbase/blob/master/commands.md#screen-control) from sys-botbase. In other words, if you accidentally press something like Home key and exit the game. It will automatically fallback to low FPS stream. And you can hop back to the game.
+- It mainly implemented simple keyboard/controller events and send those from SDL2 to switch using [sys-botbase](https://github.com/olliz0r/sys-botbase) and its [client codebase](https://github.com/kwsch/SysBot.NET).
+
+- It also featured with **fallback stream** (~0.5 FPS) using [Pixel peeking command](https://github.com/olliz0r/sys-botbase/blob/master/commands.md#screen-control) from sys-botbase. In other words, if you accidentally press something like Home key and exit the game. It will automatically fallback to low FPS stream. And you can hop back to the game.
+
+- Touch screen also working, long press to enable/disable touch mode.
 
 ### Key mappings
+- Controller: All keys mapped but only tested with my `IINE Switch Pro Controller` like [this one](https://www.amazon.com/Wireless-Controller-Nintendo-Switch-Support-Control/dp/B0888DJGGD)
+  - No Gyro/Rumble, only events supported by [SDL2-CS](https://github.com/ppy/SDL2-CS)
+
+
+
 To maintain original key functionalities like screenshot, I avoid using WASD keys.
 
 Since I only using **keyboard for testing**, it might changed significantly in the future or have a binding changing menu or not. So not recommended.
@@ -77,12 +85,10 @@ Since I only using **keyboard for testing**, it might changed significantly in t
 
 
 
-- Controller: All keys mapped but only tested with my `IINE Switch Pro Controller` like [this one](https://www.amazon.com/Wireless-Controller-Nintendo-Switch-Support-Control/dp/B0888DJGGD)
-  - No Gyro/Rumble, only events supported by [SDL2-CS](https://github.com/ppy/SDL2-CS)
-
 ## Tested and working
 - Windows
+- Linux
+- Android
 
 ### Known issues and limitations
-- Android will ran into performance issues and crash.
-- Joystick update rate is set to ~0.2 seconds, because high update rate will jamming the socket channel in sys-botbase and all other buttons start to **lag bad**.
+- Joystick update rate is set to ~0.5 seconds, because high update rate will jamming the socket channel in sys-botbase and all other buttons start to **lag bad**.

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Numerics;
@@ -498,30 +498,27 @@ namespace SysDVR.Client.GUI
                 }
 
                 if (ImGui.Button(Strings.EnterFullScreen)) ButtonFullscreen();
-                uiOptCenter.EndHere();
+                ImGui.SameLine(0, spacing);
 
-                if (Program.Options.Debug.Log) {
-                    var Input = Program.SdlCtx.Input;
-                    
-                    ImGui.NewLine();
-                    uiOptCenter.StartHere();
+                var Input = Program.SdlCtx.Input;
+                bool isInputDebug = Input != null && Program.Options.Debug.Log;
+                if (ImGui.Button("Home")) Input.Click(SwitchButton.HOME);
+                ImGui.SameLine();
+                if (Input != null && ImGui.Button("Fix Controller")) Input.ResetController();
 
-                    if (ImGui.Button("Fix Controller")) {
-                        Input.ResetController();
-                        Input.PixelPeekBackground();
-                    }
-                    ImGui.SameLine();
-                    if (ImGui.Button("Home")) Input.Click(SwitchButton.HOME);
+                if (isInputDebug) {
                     ImGui.SameLine();
                     if (ImGui.Button("-")) Input.Click(SwitchButton.MINUS);
                     ImGui.SameLine();
                     if (ImGui.Button("+")) Input.Click(SwitchButton.PLUS);
                     ImGui.SameLine();
                     if (ImGui.Button("Screen On/Off")) Input.ToggleScreen();
-                    uiOptCenter.EndHere();
+                }
 
-                    ImGui.NewLine();
+                uiOptCenter.EndHere();
+                ImGui.NewLine();
 
+                if (isInputDebug) {
                     var bSpacing = spacing * 3;
                     
                     ImGui.SameLine(0, bSpacing);
@@ -547,7 +544,6 @@ namespace SysDVR.Client.GUI
                     ImGui.NewLine();
                 }
 
-                ImGui.NewLine();
                 var w = ImGui.GetWindowSize().X;
 				DrawVolumeSlider(w / 4, w / 2);
 			}

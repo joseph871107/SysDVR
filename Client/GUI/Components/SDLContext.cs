@@ -21,7 +21,8 @@ namespace SysDVR.Client.GUI.Components
         KeyUp,
         KeyDown,
         FullScreen,
-        BackButton
+        BackButton,
+        Controller
     }
 
     public class SDLContext
@@ -68,7 +69,7 @@ namespace SysDVR.Client.GUI.Components
         {
             Program.DebugLog("Initializing SDL");
 
-            SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_GAMECONTROLLER).AssertZero(SDL_GetError);
+            SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_JOYSTICK | SDL_INIT_GAMECONTROLLER).AssertZero(SDL_GetError);
 
             var flags = SDL_image.IMG_InitFlags.IMG_INIT_JPG | SDL_image.IMG_InitFlags.IMG_INIT_PNG;
             SDL_image.IMG_Init(flags).AssertEqual((int)flags, SDL_image.IMG_GetError);
@@ -150,7 +151,7 @@ namespace SysDVR.Client.GUI.Components
                 return GuiMessage.None;
 
             if (AcceptControllerInput && Input?.HandleEvent(evt) == true)
-                return GuiMessage.Other;
+                return GuiMessage.Controller;
 
             if (DebugPrintSdlEvents)
                 Console.WriteLine(DebugSdlEvent(evt));

@@ -5,10 +5,9 @@ using System.Linq;
 using System.Net.Sockets;
 using System.Text;
 using SysBot.Base;
-using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.PixelFormats;
 using System.Threading.Tasks;
 using System.Threading;
+using BitMiracle.LibJpeg.Classic;
 
 namespace SysDVR.Client
 {
@@ -175,21 +174,6 @@ namespace SysDVR.Client
         public void Release(SwitchButton button)
         {
             Socket?.Send(SwitchCommand.Release(button));
-        }
-
-        public Image<Rgba32> PixelPeek()
-        {
-            Image<Rgba32> returnImage;
-            try
-            {
-                byte[] frame = Socket.PixelPeek();
-                returnImage = Image.Load<Rgba32>(frame);
-                return returnImage;
-            }
-            catch
-            {
-                return null;
-            }
         }
     }
 }

@@ -7,20 +7,39 @@ using System.Text;
 using System.Threading.Tasks;
 using static SDL2.SDL;
 using SysDVR.Client.GUI;
-using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.PixelFormats;
 using System.Runtime.InteropServices;
 using SysDVR.Client.Targets.Player;
 using System.Threading;
+using System.Collections.Concurrent;
+using BitMiracle.LibJpeg.Classic;
+using System.IO;
 
 namespace SysDVR.Client
 {
+    enum InputProviderEvent {
+        Other = -1,
+        Key,
+        Button,
+        Axis,
+        Touch,
+        Render,
+    }
+
+    class InputProviderEventHandle {
+        public InputProviderEvent type;
+        public SDL_Event? sdlEvent;
+        public InputProviderEventHandle(InputProviderEvent type, SDL_Event? sdlEvent = null) {
+            this.type = type;
+            this.sdlEvent = sdlEvent;
+        }
+    }
+
     public class InputProvider : IDisposable
     {
         internal SysBotbase Bot;
         internal Dictionary<SDL_GameControllerButton, SwitchButton> joyButMappng = new();
         internal Dictionary<byte, byte> joyAxisMapping = new();
-        internal DateTime axisSentTime = DateTime.Now;
+        internal DateTime AxisLastSent = DateTime.Now;
         internal short[] joyAxisValues =  {0, 0, 0, 0};
         internal Dictionary<SDL_Keycode, SwitchButton> keyMapping = new();
         internal bool updating = false;
@@ -28,6 +47,15 @@ namespace SysDVR.Client
         internal bool Screen = true;
         internal DateTime mouseDownTime = DateTime.Now;
         IntPtr controller = IntPtr.Zero;
+        const int deadzone = 5000;
+        const int LongPressMs = 500;
+        const int FailDelayMs = 100;
+        const int RenderDelayMs = 1000;
+        const int AxisUpdateRateMs = 500;
+        CancellationToken cancel;
+        LinkedList<InputProviderEventHandle> events = new();
+        ConcurrentQueue<InputProviderEvent> renderEvents = new();
+        DateTime RenderLastRequest = DateTime.Now;
 
         public InputProvider(ref SysBotbase Bot)
         {
@@ -95,6 +123,7 @@ namespace SysDVR.Client
         }
 
         public void Dispose() {
+            cancel.Register(() => {});
             CloseController();
             for (int i = 0; i < joyAxisValues.Length; i++)
                 joyAxisValues[i] = 0;
@@ -103,10 +132,56 @@ namespace SysDVR.Client
             Screen = true;
         }
 
+        void Enqueue(InputProviderEventHandle inputEvent) {
+            lock(events)
+                events.AddFirst(inputEvent);
+        }
+
+        bool TryDequeue(out InputProviderEventHandle? inputEvent) {
+            bool result = false;
+            inputEvent = null;
+            lock (events) {
+                if (events.Count > 0) {
+                    inputEvent = events.First.Value;
+                    events.RemoveFirst();
+                    result = true;
+                }
+            }
+            return result;
+        }
+
+        void Clear() {
+            events.Clear();
+            renderEvents.Clear();
+        }
+
+        void RemoveEvents(InputProviderEvent type) {
+            lock (events) {
+                var node = events.First;
+                while (node != null) {
+                    var nextNode = node.Next;
+                    if (node.Value.type == type) {
+                        events.Remove(node);
+                    }
+                    node = nextNode;
+                }
+            }
+        }
+
+        public void RequestRendering() {
+            if (!updating && (DateTime.Now - RenderLastRequest).TotalMilliseconds > RenderDelayMs) {
+                lock (renderEvents)
+                    renderEvents.Enqueue(InputProviderEvent.Render);
+                RenderLastRequest = DateTime.Now;
+            }
+        }
+
         void OnState(bool state) {
             if (state) {
+                RenderLastRequest = DateTime.Now;
                 OpenController();
-                Task.Run(FallbackFrameUpdateLoop);
+                new Thread(MainLoop).Start();
+                new Thread(FallbackFrameUpdateLoop).Start();
             } else
                 Dispose();
         }
@@ -130,23 +205,20 @@ namespace SysDVR.Client
         }
 
         void CloseController() {
+            Clear();
             if (controller != IntPtr.Zero) {
                 SDL_GameControllerClose(controller);
                 controller = IntPtr.Zero;
             }
         }
 
-        bool ProcessControllerButton(SDL_ControllerButtonEvent buttonEvent) {
-            if (joyButMappng.ContainsKey((SDL_GameControllerButton)buttonEvent.button)) {
-                SwitchButton button = joyButMappng.GetValueOrDefault((SDL_GameControllerButton)buttonEvent.button);
+        void ProcessControllerButton(SDL_ControllerButtonEvent buttonEvent) {
+            SwitchButton button = joyButMappng.GetValueOrDefault((SDL_GameControllerButton)buttonEvent.button);
 
-                if (buttonEvent.type == SDL_EventType.SDL_CONTROLLERBUTTONDOWN)
-                    Bot.Press(button);
-                if (buttonEvent.type == SDL_EventType.SDL_CONTROLLERBUTTONUP)
-                    Bot.Release(button);
-                return true;
-            }
-            return false;
+            if (buttonEvent.type == SDL_EventType.SDL_CONTROLLERBUTTONDOWN)
+                Bot.Press(button);
+            if (buttonEvent.type == SDL_EventType.SDL_CONTROLLERBUTTONUP)
+                Bot.Release(button);
         }
 
         bool ProcessKey(SDL_KeyboardEvent keyboardEvent) {
@@ -174,13 +246,11 @@ namespace SysDVR.Client
             bool isController = false;
             if (Connected)
             {
-                isController = true;
                 switch (evt.type) {
                     case SDL_EventType.SDL_WINDOWEVENT:
                     case SDL_EventType.SDL_TEXTEDITING:
                     case SDL_EventType.SDL_AUDIODEVICEADDED:
                     case SDL_EventType.SDL_MOUSEMOTION:
-                        isController = false;
                         break;
                     case SDL_EventType.SDL_JOYDEVICEADDED:
                         OpenController(evt.cdevice.which);
@@ -195,55 +265,61 @@ namespace SysDVR.Client
                     case SDL_EventType.SDL_CONTROLLERAXISMOTION:
                         switch (evt.caxis.axis) {
                             case 4:
-                                Click(SwitchButton.ZL);
+                                if (evt.caxis.axisValue > deadzone)
+                                    Bot.Press(SwitchButton.ZL);
+                                else
+                                    Bot.Release(SwitchButton.ZL);
+                                isController = true;
                                 break;
                             case 5:
-                                Click(SwitchButton.ZR);
+                                if (evt.caxis.axisValue > deadzone)
+                                    Bot.Press(SwitchButton.ZR);
+                                else
+                                    Bot.Release(SwitchButton.ZR);
+                                isController = true;
+                                break;
+                            default:
                                 break;
                         }
-                        isController = true;
+
                         if (joyAxisMapping.ContainsKey(evt.caxis.axis)) {
+                            isController = true;
+
                             byte axis = joyAxisMapping.GetValueOrDefault(evt.caxis.axis);
                             bool isX = (axis & 0x1) == 0;
-                            int deadzone = 1000;
                             short value = evt.caxis.axisValue;
-                            value = (short)((value < 0 ? -value : value) <= deadzone ? 0 : value);
-                            value = isX ? value : (short)-value;
+                            value = isX ? value : (short)(65535 - value);
+                            value = value >= deadzone || value <= -deadzone ? value : (short)0;
                             joyAxisValues[axis] = value;
-                            if ((DateTime.Now - axisSentTime).TotalSeconds >= 0.2) {
-                                var cmd = SwitchCommand.SetStick(SwitchStick.LEFT, joyAxisValues[0], joyAxisValues[1]);
-                                Bot.Socket.Send(cmd);
-                                cmd = SwitchCommand.SetStick(SwitchStick.RIGHT, joyAxisValues[2], joyAxisValues[3]);
-                                Bot.Socket.Send(cmd);
-                                axisSentTime = DateTime.Now;
-                            }
+                            Enqueue(new(InputProviderEvent.Axis, null));
                         }
                         break;
                     case SDL_EventType.SDL_CONTROLLERBUTTONDOWN:
                     case SDL_EventType.SDL_CONTROLLERBUTTONUP:
-                        isController = ProcessControllerButton(evt.cbutton);
+                        if (joyButMappng.ContainsKey((SDL_GameControllerButton)evt.cbutton.button)) {
+                            isController = true;
+                            Enqueue(new(InputProviderEvent.Button, evt));
+                        }
                         break;
                     case SDL_EventType.SDL_MOUSEBUTTONDOWN:
                         mouseDownTime = DateTime.Now;
-                        isController = false;
                         break;
                     case SDL_EventType.SDL_MOUSEBUTTONUP:
-                        if ((DateTime.Now - mouseDownTime).TotalSeconds > 1)
+                        if ((DateTime.Now - mouseDownTime).TotalMilliseconds > LongPressMs)
                             inTouchMode = !inTouchMode;
 
-                        if (inTouchMode) {
-                            SDL_Rect rect = Core.DisplayRect;
-                            double x = Math.Clamp((double)evt.motion.x / rect.w, 0, 1);
-                            double y = Math.Clamp((double)evt.motion.y / rect.h, 0, 1);
-                            Bot.Socket?.Send(SwitchExtendedCommand.Touch(x, y));
-                        }
+                        if (inTouchMode)
+                            Enqueue(new(InputProviderEvent.Touch, evt));
 
                         isController = inTouchMode;
                         
                         break;
                     case SDL_EventType.SDL_KEYDOWN:
                     case SDL_EventType.SDL_KEYUP:
-                        if (!(isController = ProcessKey(evt.key))) {
+                        if (keyMapping.ContainsKey(evt.key.keysym.sym)) {
+                            isController = true;
+                            Enqueue(new(InputProviderEvent.Key, evt));
+                        } else {
                             if (evt.type == SDL_EventType.SDL_KEYUP) {
                                 if (evt.key.keysym.sym == SDL_Keycode.SDLK_k) {
                                     isController = true;
@@ -252,18 +328,17 @@ namespace SysDVR.Client
 
                                 if (evt.key.keysym.sym == SDL_Keycode.SDLK_l) {
                                     isController = true;
-                                    PixelPeekBackground();
+                                    RequestRendering();
                                 }
                             }
                         }
 
                         break;
                     case SDL_EventType.SDL_JOYBUTTONDOWN:
-                        if (evt.jbutton.button == 1)
-                            isController = true; // Block SDLContext.PumpEvents
-                            break;
+                    case SDL_EventType.SDL_JOYBUTTONUP:
+                        isController = controller != IntPtr.Zero; // Block SDLContext.PumpEvents
+                        break;
                     default:
-                        isController = false;
                         break;
                 }
             } else {
@@ -280,33 +355,89 @@ namespace SysDVR.Client
             return isController;
         }
 
-        PlayerCore Core {
+        PlayerCore? Core {
             get {
                 try {
                     return (Program.Instance.CurrentView as PlayerView).player;
-                } catch {
-                    return null;
+                } catch {}
+                return null;
+            }
+        }
+
+        void ProcessInputProviderEvent() {
+            InputProviderEventHandle inputEvent;
+            if (TryDequeue(out inputEvent)) {
+                switch (inputEvent.type) {
+                    case InputProviderEvent.Key:
+                        ProcessKey(inputEvent.sdlEvent.Value.key);
+                        break;
+                    case InputProviderEvent.Button:
+                        ProcessControllerButton(inputEvent.sdlEvent.Value.cbutton);
+                        break;
+                    case InputProviderEvent.Touch:
+                        SDL_Event evt = inputEvent.sdlEvent.Value;
+                        double x = Math.Clamp((double)evt.motion.x / Core?.DisplayRect.w ?? 1, 0, 1);
+                        double y = Math.Clamp((double)evt.motion.y / Core?.DisplayRect.h ?? 1, 0, 1);
+                        Bot.Socket?.Send(SwitchExtendedCommand.Touch(x, y));
+                        break;
+                    case InputProviderEvent.Axis:
+                        RemoveEvents(InputProviderEvent.Axis);
+
+                        if ((DateTime.Now - AxisLastSent).TotalMilliseconds > AxisUpdateRateMs) {
+                            var cmd = SwitchCommand.SetStick(SwitchStick.LEFT, joyAxisValues[0], joyAxisValues[1]);
+                            Bot.Socket?.Send(cmd);
+                            cmd = SwitchCommand.SetStick(SwitchStick.RIGHT, joyAxisValues[2], joyAxisValues[3]);
+                            Bot.Socket?.Send(cmd);
+
+                            AxisLastSent = DateTime.Now;
+                        }
+                        break;
+                    default:
+                        break;
                 }
             }
         }
 
-        public void FallbackFrameUpdateLoop() {
-            while (Connected) {
-                try {
-                    if (Core == null)
-                        Thread.Sleep(1000);
-                    else if(Core != null && (DateTime.Now - Core.Video.VideoLastUpdate).TotalSeconds > 1) {
-                        PixelPeek();
-                        Core.Video.VideoLastUpdate = DateTime.Now;
+        void MainLoop() {
+            while (Connected && !cancel.IsCancellationRequested) {
+                ProcessInputProviderEvent();
+                RequestRendering();
+            }
+        }
+
+        async void FallbackFrameUpdateLoop() {
+            while (Connected && !cancel.IsCancellationRequested) {
+                bool containRender = false;
+
+                lock (renderEvents) {
+                    if (renderEvents.Count > 0) {
+                        containRender = true;
+                        renderEvents.Clear();
                     }
-                } catch {
-                    Thread.Sleep(1000);
                 }
+
+                if (containRender) {
+                    if (Core != null) {
+                        if ((DateTime.Now - Core.Video.VideoLastUpdate).TotalMilliseconds > RenderDelayMs) {
+                            new Thread(() => {
+                                Console.Write("[SysBotbase] PixelPeeking .");
+                                PixelPeek();
+                                Core.Video.VideoLastUpdate = DateTime.Now;
+                                Console.WriteLine("done!");
+                            }).Start();
+                        }
+                    }
+                } else
+                    await Task.Delay(FailDelayMs, cancel).ConfigureAwait(false);
             }
         }
 
         public void ResetController() {
+            CloseController();
+            OpenController();
+            Bot?.Socket?.Flush();
             Bot?.Socket?.Send(SwitchCommand.DetachController());
+            Bot?.Socket?.Flush();
         }
 
         public void Click(SwitchButton button) {
@@ -324,7 +455,7 @@ namespace SysDVR.Client
                 updating = true;
                 try {
                     VideoPlayer Video = Core.Video;
-                    var Frame = Bot.PixelPeek();
+                    byte[] Frame = Bot?.Socket?.PixelPeek() ?? new byte[0];
 
                     if (Frame != null) {
                         UpdateYUVTexture(Frame, Video);
@@ -339,23 +470,22 @@ namespace SysDVR.Client
         }
 
         void PixelPeek() {
-            if (!updating) {
-                Console.Write("[SysBotbase] PixelPeeking.");
-                while (!PixelPeekInternal()) {
+            if (!updating)
+                while (!PixelPeekInternal())
                     Console.Write(".");
-                }
-                Console.WriteLine("[SysBotbase] PixelPeek success!");
-            }
         }
 
-        public void PixelPeekBackground() {
-            Task.Run(PixelPeek);
-        }
-
-        void UpdateYUVTexture(Image<Rgba32> image, VideoPlayer Video)
+        void UpdateYUVTexture(byte[] frame, VideoPlayer Video)
         {
-            int width = image.Width;
-            int height = image.Height;
+            jpeg_error_mgr errorManager = new jpeg_error_mgr();
+            jpeg_decompress_struct image = new jpeg_decompress_struct(errorManager);
+            Stream input = new MemoryStream(frame);
+            image.jpeg_stdio_src(input);
+            image.jpeg_read_header(true);
+            image.jpeg_start_decompress();
+
+            int width = image.Output_width;
+            int height = image.Output_height;
 
             byte[] yBuffer = new byte[width * height];
             byte[] uBuffer = new byte[width * height / 4];
@@ -364,13 +494,14 @@ namespace SysDVR.Client
             int yIndex = 0, uvIndex = 0;
             for (int _y = 0; _y < height; _y++)
             {
+                byte[][] rowBuffer = {new byte[width * 3]};
+                image.jpeg_read_scanlines(rowBuffer, 1);
+                var pixels = rowBuffer[0];
                 for (int _x = 0; _x < width; _x++)
                 {
-                    var pixel = image[_x, _y];
-                    
-                    byte r = pixel.R;
-                    byte g = pixel.G;
-                    byte b = pixel.B;
+                    byte r = pixels[_x * 3];
+                    byte g = pixels[_x * 3 + 1];
+                    byte b = pixels[_x * 3 + 2];
 
                     yBuffer[yIndex++] = (byte)Math.Clamp(((66 * r + 129 * g + 25 * b + 128) >> 8) + 16, 0, 255);
 
@@ -382,6 +513,7 @@ namespace SysDVR.Client
                     }
                 }
             }
+            image.jpeg_finish_decompress();
 
             IntPtr yPlane = Marshal.UnsafeAddrOfPinnedArrayElement(yBuffer, 0);
             IntPtr uPlane = Marshal.UnsafeAddrOfPinnedArrayElement(uBuffer, 0);
@@ -390,7 +522,15 @@ namespace SysDVR.Client
             int yPitch = width;
             int uvPitch = width / 2;
 
-            SDL_UpdateYUVTexture(Video.TargetTexture, ref Video.TargetTextureSize, yPlane, yPitch, uPlane, uvPitch, vPlane, uvPitch);
+            lock(Video.yuvs) {
+                Video.yuvs.Enqueue(new YUVTextureContext{
+                    yPlane = yPlane,
+                    yPitch = yPitch,
+                    uPlane = uPlane,
+                    vPlane = vPlane,
+                    uvPitch = uvPitch,
+                });
+            }
         }
     }
 }
