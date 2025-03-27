@@ -361,7 +361,7 @@ public class ClientApp
                         goto break_main_loop;
                 }
 
-				ImGuiSDL2Impl.ProcessEvent(in evt);
+				if (msg != GuiMessage.Controller) ImGuiSDL2Impl.ProcessEvent(in evt);
 
 #if ANDROID_LIB
                 if (ImGui.GetIO().WantTextInput)
